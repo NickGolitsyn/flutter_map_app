@@ -44,6 +44,7 @@ dependencies:
   geolocator: ^13.0.4
   geolocator_android: ^4.4.2
   geolocator_apple: ^2.3.13
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:

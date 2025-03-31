@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+// import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_app/plan_run_screen.dart';
 import 'package:geolocator_android/geolocator_android.dart';
 import 'package:geolocator_apple/geolocator_apple.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,8 +12,7 @@ import 'dart:io' show Platform;
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:geolocator/geolocator.dart';
 
-// API key from https://openrouteservice.org/
-// DO NOT PUSH LIKE THIS TO GITHUB!
+// Replace the late final and dotenv loading with a simple const
 const String yourORSapiKey = 'api_key';
 
 void main() {
@@ -320,6 +321,26 @@ class _MapScreenState extends State<MapScreen> {
       appBar: AppBar(
         title: const Text('Running Route Planner'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.directions_run),
+            onPressed: () {
+              if (_currentLocation != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PlanRunScreen(
+                      startLocation: _currentLocation!,
+                    ),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please get current location first.')),
+                );
+              }
+            },
+            tooltip: 'Plan a Run',
+          ),
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: _getCurrentLocation,
