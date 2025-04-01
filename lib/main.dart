@@ -12,8 +12,7 @@ import 'dart:io' show Platform;
 import 'package:flutter_map_location_marker/flutter_map_location_marker.dart';
 import 'package:geolocator/geolocator.dart';
 
-// Replace the late final and dotenv loading with a simple const
-const String yourORSapiKey = 'api_key';
+const String ORSapiKey = 'api_key';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,11 +55,9 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // Controller for search input
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   
-  // Starting point will be user's current location
   LatLng? _currentLocation;
   LatLng? _endPoint;
   
@@ -69,7 +66,6 @@ class _MapScreenState extends State<MapScreen> {
   bool _isSearching = false;
   List<PlaceSearchResult> _searchResults = [];
   
-  // Map controller for programmatic control
   final MapController _mapController = MapController();
   
   @override
@@ -85,10 +81,8 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
   
-  // Get user's current location
   Future<void> _getCurrentLocation() async {
     try {
-      // First check for location permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -108,16 +102,16 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
       
-      // Get current position
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+        ),
       );
       
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
       });
       
-      // Center map on user's location
       if (_currentLocation != null) {
         _mapController.move(_currentLocation!, 15.0);
       }
@@ -130,7 +124,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
   
-  // Search for places using OpenStreetMap Nominatim API
   Future<void> _searchPlaces(String query) async {
     if (query.isEmpty) {
       setState(() {
@@ -176,24 +169,21 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
   
-  // Select a location from search results
   void _selectLocation(PlaceSearchResult place) {
     setState(() {
       _endPoint = LatLng(place.lat, place.lon);
       _searchResults = [];
-      _searchController.text = place.displayName.split(',')[0]; // Show only first part of address
+      _searchController.text = place.displayName.split(',')[0];
       _searchFocusNode.unfocus();
     });
     
-    // Get route when endpoint is selected
     if (_currentLocation != null && _endPoint != null) {
       _getRoute();
     }
   }
   
-  // Get walking route using OpenRouteService
   Future<void> _getRoute() async {
-    if (yourORSapiKey == 'api_key') {
+    if (ORSapiKey == 'api_key') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add your OpenRouteService API key!')),
       );
@@ -213,7 +203,7 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     final String url =
-        'https://api.openrouteservice.org/v2/directions/foot-walking?api_key=$yourORSapiKey'
+        'https://api.openrouteservice.org/v2/directions/foot-walking?api_key=$ORSapiKey'
         '&start=${_currentLocation!.longitude},${_currentLocation!.latitude}'
         '&end=${_endPoint!.longitude},${_endPoint!.latitude}';
 
@@ -222,7 +212,6 @@ class _MapScreenState extends State<MapScreen> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        // Important: ORS returns coordinates in [longitude, latitude] format
         final List<dynamic> points = data['features'][0]['geometry']['coordinates'];
         setState(() {
           _routePoints = points
@@ -230,14 +219,13 @@ class _MapScreenState extends State<MapScreen> {
               .toList();
         });
         
-        // Fit map bounds to show the entire route
-        // if (_routePoints.isNotEmpty) {
-        //   final bounds = LatLngBounds.fromPoints(_routePoints);
-        //   _mapController.fitBounds(
-        //     bounds,
-        //     options: const FitBoundsOptions(padding: EdgeInsets.all(50.0)),
-        //   );
-        // }
+        if (_routePoints.isNotEmpty) {
+          final bounds = LatLngBounds.fromPoints(_routePoints);
+          _mapController.move(
+            bounds.center,
+            14.0,
+          );
+        }
         
       } else {
         print('ORS API Error: ${response.statusCode} - ${response.body}');
@@ -257,7 +245,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Function to launch navigation in external app
   Future<void> _launchMaps() async {
     if (_routePoints.isEmpty || _currentLocation == null || _endPoint == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -266,42 +253,91 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    final LatLng start = _currentLocation!;
-    final LatLng end = _endPoint!;
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.directions_rounded),
+                title: const Text('Google Maps'),
+                onTap: () async {
+                  Navigator.pop(context);
 
-    String googleUrl =
-        'https://www.google.com/maps/dir/?api=1&origin=${start.latitude},${start.longitude}'
-        '&destination=${end.latitude},${end.longitude}&travelmode=walking';
-    String appleUrl =
-        'https://maps.apple.com/?saddr=${start.latitude},${start.longitude}'
-        '&daddr=${end.latitude},${end.longitude}&dirflg=w';
+                  final String googleUrl =
+                      'https://www.google.com/maps/dir/?api=1'
+                      '&origin=${_currentLocation!.latitude},${_currentLocation!.longitude}'
+                      '&destination=${_endPoint!.latitude},${_endPoint!.longitude}'
+                      '&travelmode=walking';
+                  
+                  final launchUri = Uri.parse(googleUrl);
 
-    Uri? launchUri;
+                  try {
+                    if (await canLaunchUrl(launchUri)) {
+                      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Launching route in Google Maps')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not launch Google Maps')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error launching Google Maps: $e')),
+                    );
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.apple),
+                title: const Text('Apple Maps'),
+                enabled: Platform.isIOS,
+                onTap: Platform.isIOS ? () async {
+                  Navigator.pop(context);
 
-    if (Platform.isIOS) {
-      launchUri = Uri.parse(appleUrl);
-    } else {
-      launchUri = Uri.parse(googleUrl);
-    }
+                  final String appleUrl =
+                      'https://maps.apple.com/?saddr=${_currentLocation!.latitude},${_currentLocation!.longitude}'
+                      '&daddr=${_endPoint!.latitude},${_endPoint!.longitude}'
+                      '&dirflg=w';
+                  
+                  final launchUri = Uri.parse(appleUrl);
 
-    try {
-      if (await canLaunchUrl(launchUri)) {
-        await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not launch ${Platform.isIOS ? "Apple Maps" : "Google Maps"}')),
+                  try {
+                    if (await canLaunchUrl(launchUri)) {
+                      await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Launching route in Apple Maps')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not launch Apple Maps')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error launching Apple Maps: $e')),
+                    );
+                  }
+                } : null,
+              ),
+              if (!Platform.isIOS)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    "Apple Maps is only available on iOS devices.",
+                    style: TextStyle(color: Colors.grey)
+                  ),
+                ),
+            ],
+          ),
         );
-        print('Could not launch $launchUri');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error launching maps: $e')),
-      );
-      print('Error launching maps: $e');
-    }
+      },
+    );
   }
   
-  // Reset route and end point
   void _resetRoute() {
     setState(() {
       _endPoint = null;
@@ -309,7 +345,6 @@ class _MapScreenState extends State<MapScreen> {
       _searchController.clear();
     });
     
-    // Center map on user's location again
     if (_currentLocation != null) {
       _mapController.move(_currentLocation!, 15.0);
     }
@@ -355,12 +390,10 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: Column(
         children: [
-          // Search input fields
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Column(
               children: [
-                // Start point (current location) input
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -386,7 +419,6 @@ class _MapScreenState extends State<MapScreen> {
                 
                 const SizedBox(height: 8),
                 
-                // End point search input
                 TextField(
                   controller: _searchController,
                   focusNode: _searchFocusNode,
@@ -421,7 +453,6 @@ class _MapScreenState extends State<MapScreen> {
                   },
                 ),
                 
-                // Search results
                 if (_searchResults.isNotEmpty)
                   Container(
                     constraints: const BoxConstraints(maxHeight: 200),
@@ -465,7 +496,6 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
           
-          // Map Display
           Expanded(
             child: Stack(
               children: [
@@ -475,7 +505,6 @@ class _MapScreenState extends State<MapScreen> {
                     initialCenter: _currentLocation ?? const LatLng(51.5, -0.09), // Default to London
                     initialZoom: 14.0,
                     onTap: (tapPosition, point) {
-                      // Allow setting destination by tapping on map
                       setState(() {
                         _endPoint = point;
                         _searchController.text = "Selected Location";
@@ -494,7 +523,6 @@ class _MapScreenState extends State<MapScreen> {
                       userAgentPackageName: 'com.example.flutter_map_app',
                     ),
                     
-                    // Current location marker from flutter_map_location_marker
                     CurrentLocationLayer(
                       alignPositionOnUpdate: AlignOnUpdate.always,
                       alignDirectionOnUpdate: AlignOnUpdate.never,
@@ -511,7 +539,6 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
                     
-                    // Route polyline
                     if (_routePoints.isNotEmpty)
                       PolylineLayer(
                         polylines: [
@@ -523,7 +550,6 @@ class _MapScreenState extends State<MapScreen> {
                         ],
                       ),
                     
-                    // End point marker
                     if (_endPoint != null)
                       MarkerLayer(
                         markers: [
@@ -540,7 +566,6 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
                 
-                // Loading indicator
                 if (_isLoadingRoute)
                   const Center(
                     child: Card(
@@ -561,7 +586,6 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // Bottom action buttons
           if (_routePoints.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(10.0),
@@ -569,8 +593,8 @@ class _MapScreenState extends State<MapScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    icon: Icon(Platform.isIOS ? Icons.apple : Icons.map),
-                    label: Text('Open in ${Platform.isIOS ? "Apple Maps" : "Google Maps"}'),
+                    icon: const Icon(Icons.map),
+                    label: const Text('Open Maps'),
                     onPressed: _launchMaps,
                   ),
                 ],
@@ -582,7 +606,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 }
 
-// Model class for search results
 class PlaceSearchResult {
   final String displayName;
   final double lat;
